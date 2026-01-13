@@ -1,7 +1,3 @@
-/**
- * src/server.js
- * DEBUG MODU: Hem ortam değişkenlerini temizler hem de gelen şifreli veriyi loglar.
- */
 import express from "express";
 import crypto from "crypto";
 import { decryptRequest, encryptResponse, FlowEndpointException } from "./encryption.js";
@@ -9,7 +5,6 @@ import { getNextScreen } from "./flow.js";
 
 const app = express();
 
-// İmza doğrulaması için raw body'ye ihtiyacımız var
 app.use(
   express.json({
     verify: (req, res, buf, encoding) => {
@@ -18,70 +13,75 @@ app.use(
   })
 );
 
-// --- ORTAM DEĞİŞKENİ TEMİZLEYİCİ ---
-const cleanEnv = (val) => {
-  if (!val) return "";
-  // Tırnakları ve bozuk satır sonlarını temizle
-  let cleaned = val.replace(/^['"]|['"]$/g, '').replace(/\\n/g, '\n');
-  return cleaned;
+// --- BASE64 DECODER ---
+// Artık "cleanEnv" yok, "decodeEnv" var.
+const getPrivateKey = () => {
+  const rawKey = process.env.PRIVATE_KEY;
+  if (!rawKey) return null;
+
+  // Eğer anahtar zaten -----BEGIN ile başlıyorsa (eski usül), olduğu gibi döndür
+  if (rawKey.trim().startsWith('-----BEGIN')) {
+      return rawKey;
+  }
+
+  // Değilse, Base64 olduğunu varsay ve PEM formatına geri çevir
+  try {
+      const decoded = Buffer.from(rawKey, 'base64').toString('utf-8');
+      console.log("🔓 Private Key Base64 formatından başarıyla çözüldü.");
+      return decoded;
+  } catch (e) {
+      console.error("❌ Private Key Base64 çözülemedi:", e.message);
+      return null;
+  }
 };
 
-const APP_SECRET = cleanEnv(process.env.APP_SECRET);
+const APP_SECRET = process.env.APP_SECRET;
 const PORT = process.env.PORT || "3000";
-const PRIVATE_KEY = cleanEnv(process.env.PRIVATE_KEY);
-const PASSPHRASE = cleanEnv(process.env.PASSPHRASE) || "";
+const PRIVATE_KEY = getPrivateKey(); // Yeni fonksiyonu kullan
+const PASSPHRASE = process.env.PASSPHRASE || "";
 
-console.log("🔒 Server Başlatılıyor (DEBUG MOD)...");
+console.log("🔒 Server Başlatılıyor...");
 console.log("- Private Key Yüklü mü?", !!PRIVATE_KEY);
+if (PRIVATE_KEY) {
+    // KONTROL AMAÇLI: Yüklenen anahtarın Public parmak izini logla
+    // Bu sayede Meta'ya yüklediğinle sunucudakinin aynı olduğunu kanıtlayacağız.
+    try {
+        const checkPub = crypto.createPublicKey(PRIVATE_KEY);
+        console.log("- Serverdaki Anahtarın Parmak İzi (Hash):", 
+            crypto.createHash('sha256').update(checkPub.export({type:'spki', format:'pem'})).digest('hex').substring(0, 10));
+    } catch (e) {
+        console.error("- ⚠️ Yüklenen Private Key bozuk görünüyor:", e.message);
+    }
+}
 
 app.post("/", async (req, res) => {
-  // 1. ÖNCE GELEN VERİYİ LOGLA (Hata olsa bile bunu göreceğiz)
-  console.log("\n📦 [DEBUG] META'DAN GELEN İSTEK:");
-  console.log("--------------------------------------------------");
-  if (req.body.encrypted_aes_key) {
-      console.log("🔑 Encrypted AES Key (BUNU KOPYALA):");
-      console.log(req.body.encrypted_aes_key);
-  } else {
-      console.log("⚠️ encrypted_aes_key bulunamadı! Body:", JSON.stringify(req.body).substring(0, 100));
-  }
-  console.log("--------------------------------------------------\n");
-
-  if (!PRIVATE_KEY) {
-    console.error('Private key is empty.');
-    return res.status(500).send();
-  }
-
-  // 2. İMZA DOĞRULAMA
+  // ... (Geri kalanı aynı, köstebek logunu istersen tutabilirsin) ...
+  // Buradaki decryptRequest çağrısı aynen kalacak
+  
+  // 1. İMZA DOĞRULAMA
   if (!isRequestSignatureValid(req)) {
-    return res.status(432).send();
+      return res.status(432).send();
   }
 
-  // 3. ŞİFRE ÇÖZME
-  let decryptedRequest = null;
+  // 2. ŞİFRE ÇÖZME
   try {
-    decryptedRequest = decryptRequest(req.body, PRIVATE_KEY, PASSPHRASE);
+    const decryptedRequest = decryptRequest(req.body, PRIVATE_KEY, PASSPHRASE);
+    const { aesKeyBuffer, initialVectorBuffer, decryptedBody } = decryptedRequest;
+    
+    const screenResponse = await getNextScreen(decryptedBody);
+    res.send(encryptResponse(screenResponse, aesKeyBuffer, initialVectorBuffer));
+    
   } catch (err) {
-    console.error("❌ Şifre Çözme Hatası (Normal, logu aldık):", err.message);
+    console.error("❌ İşlem Hatası:", err.message);
     if (err instanceof FlowEndpointException) {
       return res.status(err.statusCode).send();
     }
     return res.status(500).send();
   }
-
-  // ... Kodun geri kalanı ...
-  try {
-    const { aesKeyBuffer, initialVectorBuffer, decryptedBody } = decryptedRequest;
-    const screenResponse = await getNextScreen(decryptedBody);
-    res.send(encryptResponse(screenResponse, aesKeyBuffer, initialVectorBuffer));
-  } catch (err) {
-    console.error(err);
-    res.status(500).send();
-  }
 });
 
-app.get("/", (req, res) => res.send("WhatsApp Flows Endpoint is running!"));
-app.listen(PORT, () => console.log(`Server is listening on port: ${PORT}`));
-
+// ... (Geri kalan fonksiyonlar aynı) ...
+// isRequestSignatureValid fonksiyonunu eklemeyi unutma
 function isRequestSignatureValid(req) {
   if (!APP_SECRET) return true;
   const signatureHeader = req.get("x-hub-signature-256");
@@ -92,3 +92,5 @@ function isRequestSignatureValid(req) {
   const digestBuffer = Buffer.from(digestString, "utf-8");
   return crypto.timingSafeEqual(digestBuffer, signatureBuffer);
 }
+
+app.listen(PORT, () => console.log(`Server listening on ${PORT}`));
