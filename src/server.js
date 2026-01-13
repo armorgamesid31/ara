@@ -39,30 +39,31 @@ console.log("- Passphrase yüklendi mi?", !!PASSPHRASE ? "(Evet)" : "(Hayır)");
 // ---------------------------------------------
 
 app.post("/", async (req, res) => {
-  if (!PRIVATE_KEY) {
-    console.error('Private key is empty. Check "PRIVATE_KEY" in .env');
-    return res.status(500).send();
-  }
+  // 1. Gelen isteğin içeriğini yakala
+  const { encrypted_flow_data, encrypted_aes_key, initial_vector } = req.body;
+  
+  console.log("\n📦 [KÖSTEBEK] META'DAN GELEN PAKET:");
+  console.log("--------------------------------------------------");
+  console.log("🔑 Encrypted AES Key (Bunu kopyala):");
+  console.log(encrypted_aes_key); // <-- İŞTE BU ÇOK ÖNEMLİ
+  console.log("--------------------------------------------------\n");
 
-  // 1. İMZA DOĞRULAMA (Güvenlik)
-  if (!isRequestSignatureValid(req)) {
-    return res.status(432).send(); // 432: Request signature mismatch
-  }
-
-  // 2. ŞİFRE ÇÖZME
-  let decryptedRequest = null;
   try {
-    decryptedRequest = decryptRequest(req.body, PRIVATE_KEY, PASSPHRASE);
-  } catch (err) {
-    console.error(err);
-    if (err instanceof FlowEndpointException) {
-      return res.status(err.statusCode).send();
-    }
-    return res.status(500).send();
+    // Mevcut çözme işlemini dene
+    const decryptedRequest = decryptRequest(req.body, PRIVATE_KEY, PASSPHRASE);
+    
+    // ... (Kodun geri kalanı aynı) ...
+    const { action, screen, data } = decryptedRequest;
+    // ...
+    
+  } catch (error) {
+    console.error("❌ Şifre Çözme Hatası (Normal, panik yapma)");
+    console.error(error.message);
+    
+    // Meta'ya 421 dönüyoruz ki tekrar denesin, ama biz logu aldık bile.
+    return res.status(421).send();
   }
-
-  const { aesKeyBuffer, initialVectorBuffer, decryptedBody } = decryptedRequest;
-  console.log("💬 Decrypted Request:", JSON.stringify(decryptedBody, null, 2));
+});
 
   // 3. AKIŞ MANTIĞINI ÇALIŞTIR (flow.js)
   try {
