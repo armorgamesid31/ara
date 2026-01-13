@@ -1,3 +1,7 @@
+/**
+ * src/server.js
+ * Geliştirilmiş sürüm: Ortam değişkeni temizliği içerir.
+ */
 import express from "express";
 import crypto from "crypto";
 import { decryptRequest, encryptResponse, FlowEndpointException } from "./encryption.js";
@@ -5,6 +9,7 @@ import { getNextScreen } from "./flow.js";
 
 const app = express();
 
+// İmza doğrulaması için raw body'ye ihtiyacımız var
 app.use(
   express.json({
     verify: (req, res, buf, encoding) => {
@@ -13,19 +18,21 @@ app.use(
   })
 );
 
-// --- GELİŞMİŞ ORTAM DEĞİŞKENİ TEMİZLEYİCİ ---
+/**
+ * ORTAM DEĞİŞKENİ TEMİZLEME FONKSİYONU
+ * Coolify veya Docker'dan gelen tırnak işaretlerini (" veya ') ve 
+ * bozuk satır sonlarını (\n) temizler.
+ */
 const cleanEnv = (val) => {
   if (!val) return "";
-  // 1. Önce varsa başındaki ve sonundaki tırnakları sil (' veya ")
+  // 1. Başındaki ve sonundaki tırnakları sil
   let cleaned = val.replace(/^['"]|['"]$/g, '');
-  
-  // 2. "\n" (literal) karakterlerini gerçek satır sonuna çevir
+  // 2. Literal \n karakterlerini gerçek yeni satıra çevir
   cleaned = cleaned.replace(/\\n/g, '\n');
-  
   return cleaned;
 };
 
-// Değişkenleri güvenli bir şekilde al
+// Ortam değişkenlerini al ve temizle
 const APP_SECRET = cleanEnv(process.env.APP_SECRET);
 const PORT = process.env.PORT || "3000";
 
@@ -33,37 +40,36 @@ const PORT = process.env.PORT || "3000";
 const PRIVATE_KEY = cleanEnv(process.env.PRIVATE_KEY);
 const PASSPHRASE = cleanEnv(process.env.PASSPHRASE) || "";
 
-console.log("🔒 Anahtar Kontrolü:");
-console.log("- Private Key yüklendi mi?", !!PRIVATE_KEY);
-console.log("- Passphrase yüklendi mi?", !!PASSPHRASE ? "(Evet)" : "(Hayır)");
-// ---------------------------------------------
+console.log("🔒 Server Başlatılıyor...");
+console.log("- Private Key Durumu:", PRIVATE_KEY ? "Yüklü (Uzunluk: " + PRIVATE_KEY.length + ")" : "YOK");
+console.log("- Passphrase Durumu:", PASSPHRASE ? "Yüklü" : "Yok (Boş)");
 
 app.post("/", async (req, res) => {
-  // 1. Gelen isteğin içeriğini yakala
-  const { encrypted_flow_data, encrypted_aes_key, initial_vector } = req.body;
-  
-  console.log("\n📦 [KÖSTEBEK] META'DAN GELEN PAKET:");
-  console.log("--------------------------------------------------");
-  console.log("🔑 Encrypted AES Key (Bunu kopyala):");
-  console.log(encrypted_aes_key); // <-- İŞTE BU ÇOK ÖNEMLİ
-  console.log("--------------------------------------------------\n");
-
-  try {
-    // Mevcut çözme işlemini dene
-    const decryptedRequest = decryptRequest(req.body, PRIVATE_KEY, PASSPHRASE);
-    
-    // ... (Kodun geri kalanı aynı) ...
-    const { action, screen, data } = decryptedRequest;
-    // ...
-    
-  } catch (error) {
-    console.error("❌ Şifre Çözme Hatası (Normal, panik yapma)");
-    console.error(error.message);
-    
-    // Meta'ya 421 dönüyoruz ki tekrar denesin, ama biz logu aldık bile.
-    return res.status(421).send();
+  if (!PRIVATE_KEY) {
+    console.error('Private key is empty. Check "PRIVATE_KEY" in .env');
+    return res.status(500).send();
   }
-});
+
+  // 1. İMZA DOĞRULAMA (Güvenlik)
+  if (!isRequestSignatureValid(req)) {
+    return res.status(432).send(); // 432: Request signature mismatch
+  }
+
+  // 2. ŞİFRE ÇÖZME
+  let decryptedRequest = null;
+  try {
+    // Şifre çözme işlemini temizlenmiş anahtarlarla yap
+    decryptedRequest = decryptRequest(req.body, PRIVATE_KEY, PASSPHRASE);
+  } catch (err) {
+    console.error("❌ Şifre Çözme Hatası:", err);
+    if (err instanceof FlowEndpointException) {
+      return res.status(err.statusCode).send();
+    }
+    return res.status(500).send();
+  }
+
+  const { aesKeyBuffer, initialVectorBuffer, decryptedBody } = decryptedRequest;
+  console.log("💬 Decrypted Request:", JSON.stringify(decryptedBody, null, 2));
 
   // 3. AKIŞ MANTIĞINI ÇALIŞTIR (flow.js)
   try {
@@ -73,7 +79,7 @@ app.post("/", async (req, res) => {
     // 4. YANITI ŞİFRELE VE GÖNDER
     res.send(encryptResponse(screenResponse, aesKeyBuffer, initialVectorBuffer));
   } catch (err) {
-    console.error(err);
+    console.error("❌ Akış Mantığı Hatası:", err);
     res.status(500).send();
   }
 });
