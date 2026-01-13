@@ -17,8 +17,15 @@ app.use(
   })
 );
 
-// Ortam değişkenlerini al
-const { APP_SECRET, PRIVATE_KEY, PASSPHRASE = "", PORT = "3000" } = process.env;
+// Ortam değişkenlerini al ve tırnakları temizle
+const APP_SECRET = process.env.APP_SECRET;
+const PORT = process.env.PORT || "3000";
+
+// Tırnak işaretlerini (hem " hem ') baştan ve sondan temizleyen yardımcı fonksiyon
+const cleanEnv = (val) => val ? val.replace(/^['"]|['"]$/g, '') : val;
+
+const PRIVATE_KEY = cleanEnv(process.env.PRIVATE_KEY);
+const PASSPHRASE = cleanEnv(process.env.PASSPHRASE) || "123456";
 
 app.post("/", async (req, res) => {
   if (!PRIVATE_KEY) {
