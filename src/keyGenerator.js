@@ -1,26 +1,14 @@
 /**
- * Copyright (c) Meta Platforms, Inc. and affiliates.
- *
- * This source code is licensed under the MIT license found in the
- * LICENSE file in the root directory of this source tree.
+ * src/keyGenerator.js
+ * GÜNCELLENMİŞ SÜRÜM: Meta uyumlu PKCS8 formatında anahtar üretir.
  */
-
-/* The script will generate a public and private key pair and log the same in the console.
- * Copy paste the private key into your /.env file and public key should be added to your account.
- * For more details visit: https://developers.facebook.com/docs/whatsapp/flows/guides/implementingyourflowendpoint#upload_public_key
- *
- * Run this script using command below:
- *
- *             node src/keyGenerator.js {passphrase}
- *
- */
-
 import crypto from "crypto";
 
+// Şifreyi argüman olarak al
 const passphrase = process.argv[2];
 if (!passphrase) {
   throw new Error(
-    "Passphrase is empty. Please include passphrase argument to generate the keys like: node src/keyGenerator.js {passphrase}"
+    "Lütfen şifreyi argüman olarak girin: node src/keyGenerator.js <sifreniz>"
   );
 }
 
@@ -32,24 +20,29 @@ try {
       format: "pem",
     },
     privateKeyEncoding: {
-      type: "pkcs1",
+      type: "pkcs8", // ÖNEMLİ DEĞİŞİKLİK: pkcs1 yerine pkcs8
       format: "pem",
       cipher: "des-ede3-cbc",
       passphrase,
     },
   });
 
-  console.log(`Successfully created your public private key pair. Please copy the below values into your /.env file
-************* COPY PASSPHRASE & PRIVATE KEY BELOW TO .env FILE *************
+  console.log(`
+✅ ANAHTARLAR BAŞARIYLA OLUŞTURULDU!
+
+👇 AŞAĞIDAKİLERİ .env DOSYANIZA VEYA COOLIFY'A KAYDEDİN 👇
+===========================================================
 PASSPHRASE="${passphrase}"
 
-PRIVATE_KEY="${keyPair.privateKey}"
-************* COPY PASSPHRASE & PRIVATE KEY ABOVE TO .env FILE *************
+PRIVATE_KEY="${keyPair.privateKey.replace(/\n/g, '\\n')}"
+===========================================================
 
-************* COPY PUBLIC KEY BELOW *************
+👇 AŞAĞIDAKİ PUBLIC KEY'İ META'YA YÜKLEYİN 👇
+===========================================================
 ${keyPair.publicKey}
-************* COPY PUBLIC KEY ABOVE *************
+===========================================================
 `);
+
 } catch (err) {
-  console.error("Error while creating public private key pair:", err);
+  console.error("Anahtar oluşturulurken hata çıktı:", err);
 }

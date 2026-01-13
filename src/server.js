@@ -1,3 +1,4 @@
+
 import express from "express";
 import crypto from "crypto";
 import { getNextScreen } from "./flow.js";
@@ -6,48 +7,36 @@ const app = express();
 const PORT = process.env.PORT || "3000";
 const APP_SECRET = process.env.APP_SECRET;
 
-console.log("🏭 SUNUCU BAŞLATILIYOR (AUTO-PILOT)...");
-
-// 1. Her başlangıçta TAZE bir anahtar üret
-const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
-  modulusLength: 2048,
-  publicKeyEncoding: { type: 'spki', format: 'pem' },
-  privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
-});
-
-const cleanPublicKey = publicKey
-  .replace('-----BEGIN PUBLIC KEY-----', '')
-  .replace('-----END PUBLIC KEY-----', '')
-  .replace(/[\r\n\s]/g, '');
-
-// GÜNCELLEME KOMUTUNU LOGLA
-console.log("\n👇 ======================================================= 👇");
-console.log("⚠️  DİKKAT: Sunucu yeniden başladı, anahtar değişti!");
-console.log("    Aşağıdaki komutu hemen çalıştırıp Meta'yı güncellemelisin:");
-console.log("---------------------------------------------------------------");
-console.log(`
-import https from 'https';
-const data = JSON.stringify({
-  endpoint_uri: "https://flows.berkai.shop",
-  application_public_key: "${cleanPublicKey}"
-});
-const options = {
-  hostname: 'graph.facebook.com',
-  path: '/v21.0/25314368698232998', // Flow ID
-  method: 'POST',
-  headers: {
-    'Authorization': 'Bearer EAAPZBrqVoIMwBQYZCxZCnKlrEzuCFDnF625X05iSBE5g2FPZCq0IGTTCtcw7bc3HL57KsjHXZAZCf4bekRVSXXJhkgqEVR8iU5dwtTlANK7bVZAZAtsg9ZBLQ1DI2YhlXUjwb8DugL3G2erpu1cNJcgdhymfvt9OY8RZBXiFugrZBZBsZBJTocRVWStF0n9EYDa9WOZBa26wta4UVSBSZCYwWxMCt4y3zZB2gGviDhhKuvSqSjXSZAPSuspbJkGDIsdhEtbFRYmw6stZCMxMjptYK6QJOHDlIRs7hu46VRTW8YsqHdUjgZD',
-    'Content-Type': 'application/json',
-    'Content-Length': data.length
-  }
-};
-const req = https.request(options, res => {
-  res.on('data', d => process.stdout.write(d));
-});
-req.write(data);
-req.end();
-`);
-console.log("---------------------------------------------------------------\n");
+// 🔒 SABİT PRIVATE KEY (Otomatik Gömüldü)
+const PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDcS63dK9HWR8lr
+5XEyyh9jKA9yVNxJCNa74LnnyVXNbixToGd1/Wea1rd6DQGUmzszYu04UCIBvUnT
+BCBUVrvICT3qj4pH6GHpTR4KZz4e0p3AtTz9rmDJYnfetebvmCMVjtvJMKH+hlm9
+O267RTpIz3YW1p0RhycvKi7cS1CsqOqMYNtCt0cx3DLHPMDrd8sOUlRtmW58Tq/j
+OI1lMfm+sfQSpHmmuhfGKcC7gZ2mxMye3guzZHk1yVMkhilnvW7YbC+L5t9kKIIV
+hatp1j3FXD+uU7jWGPqoN+qCAU1RVsJOwn1Uiw8rJclGNj10YJiKLEYsLT5XN7iU
+QghhPF4DAgMBAAECggEACeiEJxN7z6XQ7b/ByfqvU2K6NyE7+zOg5423BDGDthwD
+dbYcO9asR0RAYlvyu0AJd0k2yYvzy5zmP3h1tSAQOBy6TTIsPQm7BabzTUfRfR9p
++wCWgAPM1KH6KZPdkYndN3CtJVfA9tViHzxswZLeiTx+NOQYPRvqwO37x5Vs89Gx
+GRGQeu4p65Vh4JRSpbTddYTRIr4gk3asDxebh9Qr/Z92H54akSNs+NcRqCLSfiuK
+zPrED+hivb29vkL/GtBkA3JrthqIuMK7ltVajvhV5xaMgMwwSKwETMZIofLIiw+1
+L5JznKf7XGJwnhj881tUoaAZq/knKZhts2ctWCyd2QKBgQD0sJBd4wfbshU7rhvG
+VkBHmhpap0e3wCzWxfn0CiPigWtdxphLScqT9HJfCmpeZ5DpyhYTr0ZzDEdD27SF
+a36s8pNgPDN6hK9n6jekbJ1QUP5NzlCmPBqWZ+JWHVupQa2Swf4ZhAJha1hhsfl3
+c2njTGAl+dKR7AmVVLn3NnIiBQKBgQDmenUxgx8P3fs8o1hW5m73XPorbqqXA0wg
+d1XSADVkD2Fqk5dEZsdwdTgicsdoYn0wSJZuxCEJTn4UnGO+3evGObRoFwZ+fx5m
+86s9TJT/dAnLmkyvHUhF5sWbjW38fH0wp5OuUjRvL8RmsV2n5TSpLF05O0ktHu8W
+yRwi8MdWZwKBgBOVMeihq9ZUWUiudYCZFInmdmd87ctx8OS7cXarfRW6n9ogc73K
+yRCwRpr+nWayyTE8wCmRJIU+nVF7+uWWpcu3mj3gc4pBpjwdzZg2LRzpboDRmzjC
+pKoW5FFaBiT0oayWI/zsyLf9PFSNRtbdgML1MNi5NrYA+v9diYiUbev1AoGAQDZv
+/kps1gvfmmZcD2IGGo7h+EXN62L0y7rTwz1hoq4SUxIpu9nyyOcvq5FU80U1YcVn
+fBbSqXgf8ngb5iqILOMY20NHAOlDvCU5WUvD22Ql8n7bzJIY97iy54LA2O6KJosZ
+vyCSEUQ6sO3LjSJzyIpesrpMyfBrZmrDlwyETRMCgYEA3nr0SddQJ6at9ks8NOEU
+hraIaYxejZZcZTdUp5er1nirdiUj4vdJjjmrQdGltyAzllAF0/JNAnSu77bLdEKm
+cgkJAAe0WkIb9zptVYrdLKk41ez228IobJODq4rMO6Hwd3L8A5q+JAJKWpw0Jw/a
+mZHYorhGIIK2BMehuD63nuc=
+-----END PRIVATE KEY-----
+`;
 
 app.use(express.json({
   verify: (req, res, buf, encoding) => {
@@ -56,7 +45,7 @@ app.use(express.json({
 }));
 
 app.post("/", async (req, res) => {
-  // İmza Doğrulama (Opsiyonel ama iyi olur)
+  // İmza Doğrulama
   if (APP_SECRET) {
     const signature = req.get("x-hub-signature-256");
     if (!signature) return res.status(432).send();
@@ -64,7 +53,6 @@ app.post("/", async (req, res) => {
     const digest = Buffer.from("sha256=" + hmac.update(req.rawBody).digest("hex"), "utf-8");
     const sigBuf = Buffer.from(signature, "utf-8");
     if (digest.length !== sigBuf.length || !crypto.timingSafeEqual(digest, sigBuf)) {
-      console.error("❌ İmza Hatası");
       return res.status(432).send();
     }
   }
@@ -72,16 +60,18 @@ app.post("/", async (req, res) => {
   try {
     const { encrypted_aes_key, encrypted_flow_data, initial_vector } = req.body;
 
-    // Şifre Çözme Denemesi
+    // 🔓 ŞİFRE ÇÖZME (MGF1 FIX DAHİL)
     const decryptedAesKey = crypto.privateDecrypt(
       {
-        key: privateKey,
+        key: PRIVATE_KEY,
         padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
-        oaepHash: "sha256"
+        oaepHash: "sha256",
+        mgf1Hash: "sha256" // <--- İŞTE EKSİK OLAN PARÇA! Meta bunu istiyor.
       },
       Buffer.from(encrypted_aes_key, "base64")
     );
 
+    // AES-GCM Çözme
     const flowDataBuffer = Buffer.from(encrypted_flow_data, "base64");
     const ivBuffer = Buffer.from(initial_vector, "base64");
     const authTag = flowDataBuffer.subarray(-16);
@@ -92,10 +82,10 @@ app.post("/", async (req, res) => {
     const decryptedJSON = Buffer.concat([decipher.update(encBody), decipher.final()]).toString("utf-8");
     const decryptedBody = JSON.parse(decryptedJSON);
 
-    // Akış Cevabı
+    // Akış Mantığı
     const responseData = await getNextScreen(decryptedBody);
 
-    // Cevabı Şifrele
+    // Yanıt Şifreleme
     const flippedIv = Buffer.from(ivBuffer.map(b => ~b));
     const cipher = crypto.createCipheriv("aes-128-gcm", decryptedAesKey, flippedIv);
     const encryptedResponse = Buffer.concat([
@@ -107,12 +97,9 @@ app.post("/", async (req, res) => {
     res.send(encryptedResponse);
 
   } catch (error) {
-    console.error("❌ ŞİFRE ÇÖZÜLEMEDİ:", error.message);
-    
-    // 🔥 KRİTİK NOKTA BURASI 🔥
-    // 500 yerine 421 gönderiyoruz.
-    // Bu, telefona "Anahtarın eski, git yenisini indir" emri verir.
-    res.status(421).send(); 
+    console.error("❌ HATA:", error.message);
+    // Hata durumunda 421 dönerek Meta'nın anahtarı yenilemesini zorlayalım
+    res.status(421).send();
   }
 });
 
