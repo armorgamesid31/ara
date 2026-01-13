@@ -1,6 +1,3 @@
-/**
- * src/server.js
- */
 import express from "express";
 import crypto from "crypto";
 import { decryptRequest, encryptResponse, FlowEndpointException } from "./encryption.js";
@@ -8,7 +5,6 @@ import { getNextScreen } from "./flow.js";
 
 const app = express();
 
-// İmza doğrulaması için raw body'ye ihtiyacımız var
 app.use(
   express.json({
     verify: (req, res, buf, encoding) => {
@@ -17,15 +13,30 @@ app.use(
   })
 );
 
-// Ortam değişkenlerini al ve tırnakları temizle
-const APP_SECRET = process.env.APP_SECRET;
+// --- GELİŞMİŞ ORTAM DEĞİŞKENİ TEMİZLEYİCİ ---
+const cleanEnv = (val) => {
+  if (!val) return "";
+  // 1. Önce varsa başındaki ve sonundaki tırnakları sil (' veya ")
+  let cleaned = val.replace(/^['"]|['"]$/g, '');
+  
+  // 2. "\n" (literal) karakterlerini gerçek satır sonuna çevir
+  cleaned = cleaned.replace(/\\n/g, '\n');
+  
+  return cleaned;
+};
+
+// Değişkenleri güvenli bir şekilde al
+const APP_SECRET = cleanEnv(process.env.APP_SECRET);
 const PORT = process.env.PORT || "3000";
 
-// Tırnak işaretlerini (hem " hem ') baştan ve sondan temizleyen yardımcı fonksiyon
-const cleanEnv = (val) => val ? val.replace(/^['"]|['"]$/g, '') : val;
-
+// Private Key ve Passphrase'i temizleyerek al
 const PRIVATE_KEY = cleanEnv(process.env.PRIVATE_KEY);
-const PASSPHRASE = cleanEnv(process.env.PASSPHRASE) || "123456";
+const PASSPHRASE = cleanEnv(process.env.PASSPHRASE) || "";
+
+console.log("🔒 Anahtar Kontrolü:");
+console.log("- Private Key yüklendi mi?", !!PRIVATE_KEY);
+console.log("- Passphrase yüklendi mi?", !!PASSPHRASE ? "(Evet)" : "(Hayır)");
+// ---------------------------------------------
 
 app.post("/", async (req, res) => {
   if (!PRIVATE_KEY) {
