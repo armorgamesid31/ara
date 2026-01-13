@@ -1,4 +1,77 @@
+import fs from 'fs';
+import crypto from 'crypto';
+import https from 'https';
+import path from 'path';
 
+// --- AYARLAR ---
+const CONFIG = {
+    FLOW_ID: "25314368698232998",
+    ACCESS_TOKEN: "EAAPZBrqVoIMwBQf9imHCvdAEz9quSeHgGslvbTNd9oUQV2ZBQ0UoA6ZCBdEYTZCqhrVvGDR3SZAIhI6fTfPOJk5v9glOnj4eQjAA2xKk5JSyFyGtxYaY27QZBCEZBlm63xafPaGaH6raDinHITw37PHVXGZA5O39dZAaAGgaZBxL8nNcQaOTuNKI9ijNlhkIGTwek9vRyyihmCZBxWLG5FS4qstaFUCeUijrYAcsm9Y7s20GXNzCZBf7Qxebee77AxkbwjzPT7XxbVnAe4pfD4sptZBTRok6QahriCSeh3puigQZDZD",
+    ENDPOINT_URL: "https://flows.berkai.shop"
+};
+
+async function fixItAll() {
+    console.log("💀 FINAL FIX BAŞLIYOR... (Brute-Force Modu)\n");
+
+    // 1. ANAHTARLARI OLUŞTUR VE DOSYAYA YAZ
+    // Kod içine gömmüyoruz, doğrudan dosyadan okutacağız. En temizi.
+    console.log("1️⃣  Anahtar Dosyası (src/private.pem) oluşturuluyor...");
+    const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
+        modulusLength: 2048,
+        publicKeyEncoding: { type: 'spki', format: 'pem' },
+        privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
+    });
+    
+    // src klasörüne yaz
+    const srcDir = path.join(process.cwd(), 'src');
+    if (!fs.existsSync(srcDir)) fs.mkdirSync(srcDir);
+    fs.writeFileSync(path.join(srcDir, 'private.pem'), privateKey);
+    console.log("✅ Private Key dosyaya kaydedildi.");
+
+    // 2. META GÜNCELLEME
+    console.log("\n2️⃣  Meta Güncelleniyor...");
+    const cleanPublicKey = publicKey
+        .replace('-----BEGIN PUBLIC KEY-----', '')
+        .replace('-----END PUBLIC KEY-----', '')
+        .replace(/[\r\n\s]/g, '');
+
+    const postData = JSON.stringify({
+        endpoint_uri: CONFIG.ENDPOINT_URL,
+        application_public_key: cleanPublicKey
+    });
+
+    await new Promise((resolve, reject) => {
+        const req = https.request({
+            hostname: 'graph.facebook.com',
+            path: `/v21.0/${CONFIG.FLOW_ID}`,
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${CONFIG.ACCESS_TOKEN}`,
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(postData)
+            }
+        }, (res) => {
+            let data = '';
+            res.on('data', c => data += c);
+            res.on('end', () => {
+                const result = JSON.parse(data);
+                if (result.success) {
+                    console.log("✅ Meta OK (Success: true)");
+                    resolve();
+                } else {
+                    console.log("❌ Meta Hatası:", JSON.stringify(result, null, 2));
+                    reject();
+                }
+            });
+        });
+        req.write(postData);
+        req.end();
+    });
+
+    // 3. SERVER.JS YAZ (BRUTE-FORCE DECRYPT MANTIĞI İLE)
+    console.log("\n3️⃣  src/server.js 'Dene-Yanıl' motoruyla yazılıyor...");
+    
+    const serverCode = `
 import express from "express";
 import crypto from "crypto";
 import fs from "fs";
@@ -50,7 +123,7 @@ function bruteForceDecrypt(encryptedBase64, privateKey) {
             const buffer = Buffer.from(encryptedBase64, "base64");
             const decrypted = crypto.privateDecrypt(decryptOptions, buffer);
             
-            console.log(`✅ Şifre çözüldü! Kullanılan yöntem: ${config.name}`);
+            console.log(\`✅ Şifre çözüldü! Kullanılan yöntem: \${config.name}\`);
             return decrypted; // Başarılı olursa döndür
         } catch (e) {
             lastError = e;
@@ -102,4 +175,15 @@ app.post("/", async (req, res) => {
 });
 
 app.get("/", (req, res) => res.send("Final Fix Server Running"));
-app.listen(PORT, () => console.log(`Server listening on ${PORT}`));
+app.listen(PORT, () => console.log(\`Server listening on \${PORT}\`));
+`;
+
+    fs.writeFileSync(path.join(srcDir, 'server.js'), serverCode);
+    console.log("✅ src/server.js güncellendi.");
+    console.log("\n🚀 BİTTİ! Şimdi şunları yap:");
+    console.log("   git add .");
+    console.log("   git commit -m 'Ultimate fix'");
+    console.log("   git push");
+}
+
+fixItAll();
