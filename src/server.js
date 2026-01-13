@@ -1,6 +1,6 @@
 /**
  * src/server.js
- * Geliştirilmiş sürüm: Ortam değişkeni temizliği içerir.
+ * DEBUG MODU: Hem ortam değişkenlerini temizler hem de gelen şifreli veriyi loglar.
  */
 import express from "express";
 import crypto from "crypto";
@@ -18,101 +18,77 @@ app.use(
   })
 );
 
-/**
- * ORTAM DEĞİŞKENİ TEMİZLEME FONKSİYONU
- * Coolify veya Docker'dan gelen tırnak işaretlerini (" veya ') ve 
- * bozuk satır sonlarını (\n) temizler.
- */
+// --- ORTAM DEĞİŞKENİ TEMİZLEYİCİ ---
 const cleanEnv = (val) => {
   if (!val) return "";
-  // 1. Başındaki ve sonundaki tırnakları sil
-  let cleaned = val.replace(/^['"]|['"]$/g, '');
-  // 2. Literal \n karakterlerini gerçek yeni satıra çevir
-  cleaned = cleaned.replace(/\\n/g, '\n');
+  // Tırnakları ve bozuk satır sonlarını temizle
+  let cleaned = val.replace(/^['"]|['"]$/g, '').replace(/\\n/g, '\n');
   return cleaned;
 };
 
-// Ortam değişkenlerini al ve temizle
 const APP_SECRET = cleanEnv(process.env.APP_SECRET);
 const PORT = process.env.PORT || "3000";
-
-// Private Key ve Passphrase'i temizleyerek al
 const PRIVATE_KEY = cleanEnv(process.env.PRIVATE_KEY);
 const PASSPHRASE = cleanEnv(process.env.PASSPHRASE) || "";
 
-console.log("🔒 Server Başlatılıyor...");
-console.log("- Private Key Durumu:", PRIVATE_KEY ? "Yüklü (Uzunluk: " + PRIVATE_KEY.length + ")" : "YOK");
-console.log("- Passphrase Durumu:", PASSPHRASE ? "Yüklü" : "Yok (Boş)");
+console.log("🔒 Server Başlatılıyor (DEBUG MOD)...");
+console.log("- Private Key Yüklü mü?", !!PRIVATE_KEY);
 
 app.post("/", async (req, res) => {
+  // 1. ÖNCE GELEN VERİYİ LOGLA (Hata olsa bile bunu göreceğiz)
+  console.log("\n📦 [DEBUG] META'DAN GELEN İSTEK:");
+  console.log("--------------------------------------------------");
+  if (req.body.encrypted_aes_key) {
+      console.log("🔑 Encrypted AES Key (BUNU KOPYALA):");
+      console.log(req.body.encrypted_aes_key);
+  } else {
+      console.log("⚠️ encrypted_aes_key bulunamadı! Body:", JSON.stringify(req.body).substring(0, 100));
+  }
+  console.log("--------------------------------------------------\n");
+
   if (!PRIVATE_KEY) {
-    console.error('Private key is empty. Check "PRIVATE_KEY" in .env');
+    console.error('Private key is empty.');
     return res.status(500).send();
   }
 
-  // 1. İMZA DOĞRULAMA (Güvenlik)
+  // 2. İMZA DOĞRULAMA
   if (!isRequestSignatureValid(req)) {
-    return res.status(432).send(); // 432: Request signature mismatch
+    return res.status(432).send();
   }
 
-  // 2. ŞİFRE ÇÖZME
+  // 3. ŞİFRE ÇÖZME
   let decryptedRequest = null;
   try {
-    // Şifre çözme işlemini temizlenmiş anahtarlarla yap
     decryptedRequest = decryptRequest(req.body, PRIVATE_KEY, PASSPHRASE);
   } catch (err) {
-    console.error("❌ Şifre Çözme Hatası:", err);
+    console.error("❌ Şifre Çözme Hatası (Normal, logu aldık):", err.message);
     if (err instanceof FlowEndpointException) {
       return res.status(err.statusCode).send();
     }
     return res.status(500).send();
   }
 
-  const { aesKeyBuffer, initialVectorBuffer, decryptedBody } = decryptedRequest;
-  console.log("💬 Decrypted Request:", JSON.stringify(decryptedBody, null, 2));
-
-  // 3. AKIŞ MANTIĞINI ÇALIŞTIR (flow.js)
+  // ... Kodun geri kalanı ...
   try {
+    const { aesKeyBuffer, initialVectorBuffer, decryptedBody } = decryptedRequest;
     const screenResponse = await getNextScreen(decryptedBody);
-    console.log("👉 Response to Encrypt:", JSON.stringify(screenResponse, null, 2));
-
-    // 4. YANITI ŞİFRELE VE GÖNDER
     res.send(encryptResponse(screenResponse, aesKeyBuffer, initialVectorBuffer));
   } catch (err) {
-    console.error("❌ Akış Mantığı Hatası:", err);
+    console.error(err);
     res.status(500).send();
   }
 });
 
-app.get("/", (req, res) => {
-  res.send("WhatsApp Flows Endpoint is running! 🚀");
-});
+app.get("/", (req, res) => res.send("WhatsApp Flows Endpoint is running!"));
+app.listen(PORT, () => console.log(`Server is listening on port: ${PORT}`));
 
-app.listen(PORT, () => {
-  console.log(`Server is listening on port: ${PORT}`);
-});
-
-// İmza Doğrulama Fonksiyonu
 function isRequestSignatureValid(req) {
-  if (!APP_SECRET) {
-    console.warn("App Secret is not set up. Verification skipped (NOT RECOMMENDED).");
-    return true;
-  }
-
+  if (!APP_SECRET) return true;
   const signatureHeader = req.get("x-hub-signature-256");
-  if (!signatureHeader) {
-    console.error("Error: x-hub-signature-256 header is missing");
-    return false;
-  }
-
+  if (!signatureHeader) return false;
   const signatureBuffer = Buffer.from(signatureHeader.replace("sha256=", ""), "utf-8");
   const hmac = crypto.createHmac("sha256", APP_SECRET);
   const digestString = hmac.update(req.rawBody).digest("hex");
   const digestBuffer = Buffer.from(digestString, "utf-8");
-
-  if (!crypto.timingSafeEqual(digestBuffer, signatureBuffer)) {
-    console.error("Error: Request Signature did not match");
-    return false;
-  }
-  return true;
+  return crypto.timingSafeEqual(digestBuffer, signatureBuffer);
 }
